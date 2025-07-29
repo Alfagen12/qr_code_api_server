@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Scanner - Демо</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            transition: border-color 0.3s;
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            border-color: #007bff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .btn {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            transition: background-color 0.3s;
+        }
+        
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        
+        .btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .result.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .result.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+        }
+        
+        .preview {
+            max-width: 300px;
+            max-height: 300px;
+            margin: 20px auto;
+            border-radius: 5px;
+        }
+        
+        .api-info {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        
+        .endpoint {
+            font-family: 'Courier New', monospace;
+            background-color: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 QR Code Scanner API - Демо</h1>
+        
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <div>
+                <h3>📁 Загрузите изображение с QR кодом</h3>
+                <p>Нажмите здесь или перетащите файл</p>
+                <p><small>Поддерживаемые форматы: JPG, PNG, WEBP, BMP</small></p>
+            </div>
+        </div>
+        
+        <input type="file" id="fileInput" accept="image/*">
+        
+        <div style="text-align: center;">
+            <button class="btn" onclick="scanQR()" id="scanBtn" disabled>🔍 Сканировать QR код</button>
+            <button class="btn" onclick="scanQRSimple()" id="scanSimpleBtn" disabled>⚡ Быстрое сканирование</button>
+            <button class="btn" onclick="scanQRAdvanced()" id="scanAdvancedBtn" disabled>🚀 Максимальная точность</button>
+            <button class="btn" onclick="scanQRExtreme()" id="scanExtremeBtn" disabled style="background-color: #dc3545;">🔥 Экстремальное сканирование</button>
+            <button class="btn" onclick="scanScreenPhoto()" id="scanScreenBtn" disabled style="background-color: #6f42c1;">📱 Фото экрана</button>
+        </div>
+        
+        <div id="preview" style="text-align: center;"></div>
+        
+        <div id="result" class="result"></div>
+        
+        <div class="api-info">
+            <h4>📡 API Endpoints:</h4>
+            <p><strong>Полное сканирование:</strong> <span class="endpoint">POST /scan</span></p>
+            <p><strong>Быстрое сканирование:</strong> <span class="endpoint">POST /scan-simple</span></p>
+            <p><strong>Максимальная точность:</strong> <span class="endpoint">POST /scan-advanced</span></p>
+            <p><strong>Экстремальное сканирование:</strong> <span class="endpoint">POST /scan-extreme</span></p>
+            <p><strong>Фото экранов:</strong> <span class="endpoint">POST /scan-screen-photo</span></p>
+            <p><strong>Документация:</strong> <a href="http://localhost:8000/docs" target="_blank">http://localhost:8000/docs</a></p>
+            <p><strong>Состояние сервиса:</strong> <a href="http://localhost:8000/health" target="_blank">http://localhost:8000/health</a></p>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.querySelector('.upload-area');
+        const resultDiv = document.getElementById('result');
+        const previewDiv = document.getElementById('preview');
+        const scanBtn = document.getElementById('scanBtn');
+        const scanAdvancedBtn = document.getElementById('scanAdvancedBtn');
+        
+        // Обработка выбора файла
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        // Drag & Drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect();
+            }
+        });
+        
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (!file) return;
+            
+            selectedFile = file;
+            
+            // Показать превью
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewDiv.innerHTML = `
+                    <h4>Превью изображения:</h4>
+                    <img src="${e.target.result}" class="preview" alt="Preview">
+                    <p><strong>Файл:</strong> ${file.name} (${(file.size / 1024).toFixed(1)} KB)</p>
+                `;
+            };
+            reader.readAsDataURL(file);
+            
+            // Активировать кнопки
+            scanBtn.disabled = false;
+            scanSimpleBtn.disabled = false;
+            scanAdvancedBtn.disabled = false;
+            scanExtremeBtn.disabled = false;
+            scanScreenBtn.disabled = false;
+            
+            // Очистить предыдущие результаты
+            hideResult();
+        }
+        
+        function showResult(content, isError = false) {
+            resultDiv.className = `result ${isError ? 'error' : 'success'}`;
+            resultDiv.innerHTML = content;
+            resultDiv.style.display = 'block';
+        }
+        
+        function hideResult() {
+            resultDiv.style.display = 'none';
+        }
+        
+        function showLoading(message) {
+            showResult(`<div class="loading">⏳ ${message}</div>`);
+        }
+        
+        async function scanQR() {
+            if (!selectedFile) return;
+            
+            showLoading('Сканирование QR кода...');
+            scanBtn.disabled = true;
+            scanSimpleBtn.disabled = true;
+            scanAdvancedBtn.disabled = true;
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                
+                const response = await fetch('http://localhost:8000/scan', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    let content = `
+                        <h4>✅ QR код успешно распознан!</h4>
+                        <p><strong>Содержимое:</strong></p>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; word-break: break-all;">
+                            ${escapeHtml(data.data)}
+                        </div>
+                        <p><strong>Найдено QR кодов:</strong> ${data.details.length}</p>
+                    `;
+                    
+                    if (data.details.length > 1) {
+                        content += '<h5>Все найденные QR коды:</h5><ul>';
+                        data.details.forEach((detail, index) => {
+                            content += `<li><strong>QR ${index + 1}:</strong> ${escapeHtml(detail.data)}</li>`;
+                        });
+                        content += '</ul>';
+                    }
+                    
+                    showResult(content);
+                } else {
+                    showResult(`<h4>❌ Ошибка</h4><p>${data.message || 'QR код не найден'}</p>`, true);
+                }
+                
+            } catch (error) {
+                showResult(`<h4>❌ Ошибка соединения</h4><p>Не удается подключиться к серверу. Убедитесь, что сервер запущен на http://localhost:8000</p>`, true);
+            } finally {
+                scanBtn.disabled = false;
+                scanSimpleBtn.disabled = false;
+            }
+        }
+        
+        async function scanQRSimple() {
+            if (!selectedFile) return;
+            
+            showLoading('Быстрое сканирование...');
+            scanBtn.disabled = true;
+            scanSimpleBtn.disabled = true;
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                
+                const response = await fetch('http://localhost:8000/scan-simple', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`
+                        <h4>⚡ Быстрое сканирование завершено!</h4>
+                        <p><strong>Результат:</strong></p>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; word-break: break-all;">
+                            ${escapeHtml(data.result)}
+                        </div>
+                    `);
+                } else {
+                    showResult(`<h4>❌ Ошибка</h4><p>${data.detail || 'QR код не найден'}</p>`, true);
+                }
+                
+            } catch (error) {
+                showResult(`<h4>❌ Ошибка соединения</h4><p>Не удается подключиться к серверу. Убедитесь, что сервер запущен на http://localhost:8000</p>`, true);
+            } finally {
+                scanBtn.disabled = false;
+                scanSimpleBtn.disabled = false;
+            }
+        }
+        
+        async function scanQRAdvanced() {
+            if (!selectedFile) return;
+            
+            showLoading('Максимальная точность - обработка изображения...');
+            scanBtn.disabled = true;
+            scanSimpleBtn.disabled = true;
+            scanAdvancedBtn.disabled = true;
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                
+                const response = await fetch('http://localhost:8000/scan-advanced', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    let content = `
+                        <h4>🚀 Продвинутое сканирование завершено!</h4>
+                        <p><strong>Содержимое:</strong></p>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; word-break: break-all;">
+                            ${escapeHtml(data.data)}
+                        </div>
+                        <div style="background: #e9ecef; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 14px;">
+                            <h5>📊 Информация об обработке:</h5>
+                            <p><strong>Всего попыток:</strong> ${data.processing_info?.total_attempts || 'N/A'}</p>
+                            <p><strong>Лучший метод:</strong> ${data.processing_info?.best_method || 'N/A'}</p>
+                            <p><strong>Предобработка:</strong> ${data.processing_info?.best_preprocessing || 'N/A'}</p>
+                        </div>
+                    `;
+                    
+                    if (data.details && data.details.length > 1) {
+                        content += '<h5>🔍 Все найденные варианты:</h5><ul>';
+                        data.details.forEach((detail, index) => {
+                            content += `<li><strong>Вариант ${index + 1}:</strong> ${escapeHtml(detail.data)} 
+                                       <small>(${detail.method}, ${detail.preprocessing})</small></li>`;
+                        });
+                        content += '</ul>';
+                    }
+                    
+                    showResult(content);
+                } else {
+                    showResult(`<h4>❌ Ошибка</h4><p>${data.message || 'QR код не найден даже с максимальной обработкой'}</p>`, true);
+                }
+                
+            } catch (error) {
+                showResult(`<h4>❌ Ошибка соединения</h4><p>Не удается подключиться к серверу. Убедитесь, что сервер запущен на http://localhost:8000</p>`, true);
+            } finally {
+                scanBtn.disabled = false;
+                scanSimpleBtn.disabled = false;
+                scanAdvancedBtn.disabled = false;
+                scanExtremeBtn.disabled = false;
+            }
+        }
+        
+        async function scanQRExtreme() {
+            if (!selectedFile) {
+                alert('Пожалуйста, выберите файл для сканирования.');
+                return;
+            }
+            
+            showLoading('🔥 Экстремальное сканирование - может занять больше времени...');
+            scanBtn.disabled = true;
+            scanSimpleBtn.disabled = true;
+            scanAdvancedBtn.disabled = true;
+            scanExtremeBtn.disabled = true;
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                
+                const response = await fetch('http://localhost:8000/scan-extreme', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    let content = `
+                        <h4>🔥 Экстремальное сканирование успешно!</h4>
+                        <p><strong>Содержимое:</strong></p>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; word-break: break-all;">
+                            ${escapeHtml(data.data)}
+                        </div>
+                        <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 14px;">
+                            <h5>🔥 Информация об экстремальном сканировании:</h5>
+                            <p><strong>Всего попыток:</strong> ${data.debug_info?.total_attempts || 'N/A'}</p>
+                            <p><strong>Успешных вариантов:</strong> ${data.debug_info?.successful_variants || 'N/A'}</p>
+                            <p><strong>Лучший метод:</strong> ${data.debug_info?.best_method || 'N/A'}</p>
+                            <p><strong>Папка отладки:</strong> ${data.debug_info?.debug_directory || 'N/A'}</p>
+                        </div>
+                    `;
+                    
+                    if (data.details && data.details.length > 0) {
+                        content += `
+                            <details style="margin-top: 15px;">
+                                <summary style="cursor: pointer; font-weight: bold;">📋 Подробная информация</summary>
+                                <div style="background: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 12px;">
+                        `;
+                        
+                        data.details.forEach((detail, index) => {
+                            content += `
+                                <p><strong>Результат ${index + 1}:</strong></p>
+                                <ul style="margin-left: 20px;">
+                                    <li><strong>Данные:</strong> ${escapeHtml(detail.data.substring(0, 100))}${detail.data.length > 100 ? '...' : ''}</li>
+                                    <li><strong>Метод:</strong> ${detail.method}</li>
+                                    <li><strong>Уверенность:</strong> ${detail.confidence}</li>
+                                    ${detail.variant_file ? `<li><strong>Файл варианта:</strong> ${detail.variant_file}</li>` : ''}
+                                </ul>
+                            `;
+                        });
+                        
+                        content += `
+                                </div>
+                            </details>
+                        `;
+                    }
+                    
+                    showResult(content);
+                } else {
+                    let content = `<h4>🔥 Экстремальное сканирование завершено</h4><p><strong>Результат:</strong> ${data.message || 'QR код не найден даже после экстремального анализа'}</p>`;
+                    
+                    if (data.debug_info) {
+                        content += `
+                            <div style="background: #f8d7da; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 14px;">
+                                <h5>🔍 Отладочная информация:</h5>
+                                <p><strong>Всего попыток:</strong> ${data.debug_info.total_attempts || 'N/A'}</p>
+                                <p><strong>Папка отладки:</strong> ${data.debug_info.debug_directory || 'N/A'}</p>
+                                <p><strong>Исходное изображение:</strong> ${data.debug_info.original_saved || 'N/A'}</p>
+                                <p style="color: #856404; font-style: italic;">${data.debug_info.message || ''}</p>
+                            </div>
+                        `;
+                    }
+                    
+                    showResult(content, true);
+                }
+                
+            } catch (error) {
+                showResult(`<h4>❌ Ошибка соединения</h4><p>Не удается подключиться к серверу. Убедитесь, что сервер запущен на http://localhost:8000</p>`, true);
+            } finally {
+                scanBtn.disabled = false;
+                scanSimpleBtn.disabled = false;
+                scanAdvancedBtn.disabled = false;
+                scanExtremeBtn.disabled = false;
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Проверка состояния сервера при загрузке страницы
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('http://localhost:8000/health');
+                if (response.ok) {
+                    console.log('✅ Сервер доступен');
+                }
+            } catch (error) {
+                showResult(`
+                    <h4>⚠️ Сервер недоступен</h4>
+                    <p>Запустите сервер командой: <code>python main.py</code></p>
+                    <p>Или используйте: <code>start_server.bat</code></p>
+                `, true);
+            }
+        });
+        
+        async function scanScreenPhoto() {
+            if (!selectedFile) {
+                alert('Пожалуйста, выберите файл для сканирования.');
+                return;
+            }
+            
+            showLoading('📱 Сканирование фото экрана - обработка бликов и перспективы...');
+            scanBtn.disabled = true;
+            scanSimpleBtn.disabled = true;
+            scanAdvancedBtn.disabled = true;
+            scanExtremeBtn.disabled = true;
+            scanScreenBtn.disabled = true;
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                
+                const response = await fetch('http://localhost:8000/scan-screen-photo', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    let content = `
+                        <h4>📱 Успешное сканирование фото экрана!</h4>
+                        <p><strong>Содержимое:</strong></p>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; word-break: break-all;">
+                            ${escapeHtml(data.data)}
+                        </div>
+                        <div style="background: #e1f5fe; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 14px;">
+                            <h5>📱 Информация о сканировании экрана:</h5>
+                            <p><strong>Всего попыток:</strong> ${data.debug_info?.total_attempts || 'N/A'}</p>
+                            <p><strong>Успешных вариантов:</strong> ${data.debug_info?.successful_variants || 'N/A'}</p>
+                            <p><strong>Лучший метод:</strong> ${data.debug_info?.best_method || 'N/A'}</p>
+                        </div>
+                    `;
+                    
+                    showResult(content);
+                } else {
+                    let content = `<h4>📱 Сканирование фото экрана завершено</h4><p><strong>Результат:</strong> ${data.message || 'QR код не найден на фото экрана'}</p>`;
+                    
+                    if (data.debug_info && data.debug_info.suggestions) {
+                        content += `
+                            <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 14px;">
+                                <h6>💡 Рекомендации:</h6>
+                                <ul style="margin-left: 20px;">
+                        `;
+                        data.debug_info.suggestions.forEach(suggestion => {
+                            content += `<li>${suggestion}</li>`;
+                        });
+                        content += `</ul></div>`;
+                    }
+                    
+                    showResult(content, true);
+                }
+                
+            } catch (error) {
+                showResult(`<h4>❌ Ошибка соединения</h4><p>Не удается подключиться к серверу.</p>`, true);
+            } finally {
+                scanBtn.disabled = false;
+                scanSimpleBtn.disabled = false;
+                scanAdvancedBtn.disabled = false;
+                scanExtremeBtn.disabled = false;
+                scanScreenBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
